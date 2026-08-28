@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guerra Espacial</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #05051a;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(#030318, #090936);
+            border: 3px solid #28a9ff;
+            box-shadow: 0 0 30px #008cff;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #hud {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 0 0 8px #00aaff;
+            pointer-events: none;
+        }
+
+        #menu,
+        #gameOver {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 20, 0.82);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        #gameOver {
+            display: none;
+        }
+
+        h1 {
+            color: #31b9ff;
+            font-size: 52px;
+            margin: 0 0 15px;
+            text-shadow: 0 0 20px #008cff;
+        }
+
+        h2 {
+            color: #ff3b5c;
+            font-size: 45px;
+            margin: 0 0 15px;
+            text-shadow: 0 0 20px red;
+        }
+
+        p {
+            font-size: 18px;
+            margin: 8px;
+        }
+
+        button {
+            margin-top: 25px;
+            padding: 15px 35px;
+            border: 2px solid #28a9ff;
+            border-radius: 10px;
+            background: #087dcc;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 15px #008cff;
+        }
+
+        button:hover {
+            background: #16aaff;
+            transform: scale(1.05);
+        }
+
+        #mobileControls {
+            position: absolute;
+            bottom: 15px;
+            left: 0;
+            right: 0;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+
+        .mobileButton {
+            width: 70px;
+            height: 60px;
+            margin: 0;
+            padding: 0;
+            font-size: 28px;
+            opacity: 0.7;
+        }
+
+        @media (max-width: 700px) {
+            #game {
+                border: none;
+            }
+
+            #mobileControls {
+                display: flex;
+            }
+
+            h1 {
+                font-size: 38px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="game">
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <div id="hud">
+        <div>🚀 Pontos: <span id="score">0</span></div>
+        <div>❤️ Vidas: <span id="lives">3</span></div>
+    </div>
+
+    <div id="menu">
+        <h1>🚀 GUERRA ESPACIAL</h1>
+        <p>Destrua os inimigos e sobreviva!</p>
+        <p>⬅️ ➡️ Mova a nave</p>
+        <p>🔫 Espaço para atirar</p>
+        <button onclick="startGame()">JOGAR</button>
+    </div>
+
+    <div id="gameOver">
+        <h2>GAME OVER</h2>
+        <p>Sua pontuação: <strong id="finalScore">0</strong></p>
+        <button onclick="startGame()">JOGAR NOVAMENTE</button>
+    </div>
+
+    <div id="mobileControls">
+        <button class="mobileButton" id="leftButton">⬅️</button>
+        <button class="mobileButton" id="fireButton">🔥</button>
+        <button class="mobileButton" id="rightButton">➡️</button>
+    </div>
+
+</div>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const scoreText = document.getElementById("score");
+const livesText = document.getElementById("lives");
+
+let gameRunning = false;
+let score = 0;
+let lives = 3;
+
+const keys = {};
+
+let bullets = [];
+let enemies = [];
+let stars = [];
+let particles = [];
+
+let enemyTimer = 0;
+let shootCooldown = 0;
+
+// ===============================
+// ESTRELAS
+// ===============================
+
+for (let i = 0; i < 100; i++) {
+    stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2 + 1,
+        speed: Math.random() * 2 + 0.5
+    });
+}
+
+// ===============================
+// NAVE
+// ===============================
+
+const player = {
+    x: canvas.width / 2 - 25,
+    y: canvas.height - 80,
+    width: 50,
+    height: 45,
+    speed: 7
+};
+
+// ===============================
+// CONTROLES
+// ===============================
+
+document.addEventListener("keydown", (event) => {
+    keys[event.code] = true;
+
+    if (event.code === "Space") {
+        event.preventDefault();
+    }
+});
+
+document.addEventListener("keyup", (event) => {
+    keys[event.code] = false;
+});
+
+// Controles para celular
+
+const leftButton = document.getElementById("leftButton");
+const rightButton = document.getElementById("rightButton");
+const fireButton = document.getElementById("fireButton");
+
+leftButton.addEventListener("touchstart", () => keys["ArrowLeft"] = true);
+leftButton.addEventListener("touchend", () => keys["ArrowLeft"] = false);
+
+rightButton.addEventListener("touchstart", () => keys["ArrowRight"] = true);
+rightButton.addEventListener("touchend", () => keys["ArrowRight"] = false);
+
+fireButton.addEventListener("touchstart", () => keys["Space"] = true);
+fireButton.addEventListener("touchend", () => keys["Space"] = false);
+
+// ===============================
+// DESENHAR NAVE
+// ===============================
+
+function drawPlayer() {
+
+    ctx.save();
+
+    ctx.translate(
+        player.x + player.width / 2,
+        player.y + player.height / 2
+    );
+
+    // Fogo da nave
+
+    ctx.fillStyle = "#ff9d00";
+    ctx.beginPath();
+    ctx.moveTo(-10, 15);
+    ctx.lineTo(0, 35 + Math.random() * 8);
+    ctx.lineTo(10, 15);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff200";
+    ctx.beginPath();
+    ctx.moveTo(-5, 15);
+    ctx.lineTo(0, 29 + Math.random() * 5);
+    ctx.lineTo(5, 15);
+    ctx.fill();
+
+    // Corpo
+
+    ctx.fillStyle = "#24aaff";
+
+    ctx.beginPath();
+    ctx.moveTo(0, -25);
+    ctx.lineTo(24, 20);
+    ctx.lineTo(10, 15);
+    ctx.lineTo(0, 25);
+    ctx.lineTo(-10, 15);
+    ctx.lineTo(-24, 20);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cabine
+
+    ctx.fillStyle = "#b9f3ff";
+
+    ctx.beginPath();
+    ctx.arc(0, -5, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Brilho
+
+    ctx.shadowColor = "#00aaff";
+    ctx.shadowBlur = 20;
+
+    ctx.restore();
+}
+
+// ===============================
+// DESENHAR INIMIGO
+// ===============================
+
+function drawEnemy(enemy) {
+
+    ctx.save();
+
+    ctx.translate(
+        enemy.x + enemy.width / 2,
+        enemy.y + enemy.height / 2
+    );
+
+    ctx.fillStyle = "#ff304f";
+
+    ctx.beginPath();
+    ctx.moveTo(0, 20);
+    ctx.lineTo(-25, -10);
+    ctx.lineTo(-10, -5);
+    ctx.lineTo(-15, -22);
+    ctx.lineTo(0, -12);
+    ctx.lineTo(15, -22);
+    ctx.lineTo(10, -5);
+    ctx.lineTo(25, -10);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#ffb3bd";
+
+    ctx.beginPath();
+    ctx.arc(0, -5, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// ===============================
+// ATIRAR
+// ===============================
+
+function shoot() {
+
+    if (shootCooldown > 0) return;
+
+    bullets.push({
+        x: player.x + player.width / 2 - 3,
+        y: player.y,
+        width: 6,
+        height: 18,
+        speed: 10
+    });
+
+    shootCooldown = 12;
+}
+
+// ===============================
+// CRIAR INIMIGO
+// ===============================
+
+function createEnemy() {
+
+    const size = 45;
+
+    enemies.push({
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        width: size,
+        height: size,
+        speed: 2 + Math.random() * 2
+    });
+}
+
+// ===============================
+// EXPLOSÃO
+// ===============================
+
+function createExplosion(x, y) {
+
+    for (let i = 0; i < 20; i++) {
+
+        particles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            life: 30,
+            color: Math.random() > 0.5 ? "#ff5b00" : "#ffff00"
+        });
+    }
+}
+
+// ===============================
+// COLISÃO
+// ===============================
+
+function collision(a, b) {
+
+    return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+    );
+}
+
+// ===============================
+// ATUALIZAR JOGO
+// ===============================
+
+function update() {
+
+    if (!gameRunning) return;
+
+    // Movimento da nave
+
+    if (keys["ArrowLeft"] || keys["KeyA"]) {
+        player.x -= player.speed;
+    }
+
+    if (keys["ArrowRight"] || keys["KeyD"]) {
+        player.x += player.speed;
+    }
+
+    // Limites
+
+    if (player.x < 0) {
+        player.x = 0;
+    }
+
+    if (player.x + player.width > canvas.width) {
+        player.x = canvas.width - player.width;
+    }
+
+    // Tiro
+
+    if (keys["Space"]) {
+        shoot();
+    }
+
+    if (shootCooldown > 0) {
+        shootCooldown--;
+    }
+
+    // Criar inimigos
+
+    enemyTimer++;
+
+    if (enemyTimer > 45) {
+        createEnemy();
+        enemyTimer = 0;
+    }
+
+    // Atualizar tiros
+
+    bullets.forEach((bullet, index) => {
+
+        bullet.y -= bullet.speed;
+
+        if (bullet.y < -20) {
+            bullets.splice(index, 1);
+        }
+
+    });
+
+    // Atualizar inimigos
+
+    enemies.forEach((enemy, index) => {
+
+        enemy.y += enemy.speed;
+
+        // Inimigo chegou ao jogador
+
+        if (enemy.y > canvas.height) {
+
+            enemies.splice(index, 1);
+
+            lives--;
+            livesText.textContent = lives;
+
+            if (lives <= 0) {
+                endGame();
+            }
+        }
+
+    });
+
+    // Colisão tiro x inimigo
+
+    bullets.forEach((bullet, bulletIndex) => {
+
+        enemies.forEach((enemy, enemyIndex) => {
+
+            if (collision(bullet, enemy)) {
+
+                createExplosion(
+                    enemy.x + enemy.width / 2,
+                    enemy.y + enemy.height / 2
+                );
+
+                bullets.splice(bulletIndex, 1);
+                enemies.splice(enemyIndex, 1);
+
+                score += 10;
+                scoreText.textContent = score;
+            }
+
+        });
+
+    });
+
+    // Atualizar partículas
+
+    particles.forEach((particle, index) => {
+
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        particle.life--;
+
+        if (particle.life <= 0) {
+            particles.splice(index, 1);
+        }
+
+    });
+
+    // Estrelas
+
+    stars.forEach(star => {
+
+        star.y += star.speed;
+
+        if (star.y > canvas.height) {
+            star.y = 0;
+            star.x = Math.random() * canvas.width;
+        }
+
+    });
+}
+
+// ===============================
+// DESENHAR
+// ===============================
+
+function draw() {
+
+    // Fundo
+
+    ctx.fillStyle = "#030318";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Estrelas
+
+    stars.forEach(star => {
+
+        ctx.fillStyle = "white";
+
+        ctx.globalAlpha = Math.random() * 0.6 + 0.4;
+
+        ctx.fillRect(
+            star.x,
+            star.y,
+            star.size,
+            star.size
+        );
+
+    });
+
+    ctx.globalAlpha = 1;
+
+    // Tiros
+
+    bullets.forEach(bullet => {
+
+        ctx.fillStyle = "#00ffff";
+        ctx.shadowColor = "#00ffff";
+        ctx.shadowBlur = 15;
+
+        ctx.fillRect(
+            bullet.x,
+            bullet.y,
+            bullet.width,
+            bullet.height
+        );
+
+        ctx.shadowBlur = 0;
+    });
+
+    // Inimigos
+
+    enemies.forEach(enemy => {
+        drawEnemy(enemy);
+    });
+
+    // Nave
+
+    drawPlayer();
+
+    // Partículas
+
+    particles.forEach(particle => {
+
+        ctx.fillStyle = particle.color;
+
+        ctx.globalAlpha = particle.life / 30;
+
+        ctx.fillRect(
+            particle.x,
+            particle.y,
+            5,
+            5
+        );
+
+    });
+
+    ctx.globalAlpha = 1;
+}
+
+// ===============================
+// LOOP
+// ===============================
+
+function gameLoop() {
+
+    update();
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+// ===============================
+// COMEÇAR
+// ===============================
+
+function startGame() {
+
+    score = 0;
+    lives = 3;
+
+    scoreText.textContent = score;
+    livesText.textContent = lives;
+
+    bullets = [];
+    enemies = [];
+    particles = [];
+
+    player.x = canvas.width / 2 - 25;
+
+    enemyTimer = 0;
+    shootCooldown = 0;
+
+    gameRunning = true;
+
+    document.getElementById("menu").style.display = "none";
+    document.getElementById("gameOver").style.display = "none";
+}
+
+// ===============================
+// GAME OVER
+// ===============================
+
+function endGame() {
+
+    gameRunning = false;
+
+    document.getElementById("finalScore").textContent = score;
+    document.getElementById("gameOver").style.display = "flex";
+}
+
+// Iniciar o loop
+
+gameLoop();
+
+</script>
+
+</body>
+</html>
